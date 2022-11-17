@@ -42,6 +42,19 @@ KSH:=ksh
 SHELLS:=$(SH) $(BASH) $(KSH)
 DATE:=date
 
+SPEC_FILE ?= ${NAME}.spec
+SOURCE_NAME ?= ${NAME}
+BUILD_DIR ?= $(PWD)/dist/rpmbuild
+SOURCE_PATH := ${BUILD_DIR}/SOURCES/${SOURCE_NAME}-${VERSION}.tar.bz2
+
+ifeq ($(NAME),)
+NAME := $(shell basename $(shell pwd))
+endif
+
+ifeq ($(VERSION),)
+VERSION := $(shell git describe --tags | tr -s '-' '~' | tr -d '^v')
+endif
+
 # Quick run shellspec to do a one off test
 .PHONY: test
 test:
@@ -61,3 +74,24 @@ test-all:
 .PHONY: ci
 ci:
 	find . -name "*.sh" -type f | $(ENTR) -d sh -xec "for s in $(SHELLS); do $(SHELLSPEC) --shell \$$s $(SHELLSPECARGS); done; $(DATE)"
+
+.PHONY: rpm
+rpm: prepare rpm_package_source rpm_build_source rpm_build
+
+.PHONY: prepare
+prepare:
+	rm -rf $(BUILD_DIR)
+	mkdir -p $(BUILD_DIR)/SPECS $(BUILD_DIR)/SOURCES
+	cp $(SPEC_FILE) $(BUILD_DIR)/SPECS/
+
+.PHONY: rpm_package_source
+rpm_package_source:
+	tar --transform 'flags=r;s,^,/${NAME}-${VERSION}/,' --exclude .git --exclude dist -cvjf $(SOURCE_PATH) .
+
+.PHONY: rpm_build_source
+rpm_build_source:
+	rpmbuild --nodeps -ts $(SOURCE_PATH) --define "_topdir $(BUILD_DIR)"
+
+.PHONY: rpm_build
+rpm_build:
+	rpmbuild --nodeps -ba $(SPEC_FILE) --define "_topdir $(BUILD_DIR)"
