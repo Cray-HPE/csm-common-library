@@ -39,7 +39,8 @@ ENTR:=entr
 SH:=sh
 BASH:=bash
 KSH:=ksh
-SHELLS:=$(SH) $(BASH) $(KSH)
+ZSH:=zsh
+SHELLS:=$(SH) $(BASH) $(KSH) $(ZSH)
 DATE:=date
 
 # Quick run shellspec to do a one off test

@@ -26,10 +26,6 @@
 #
 # Common logging library for posix shells.
 #
-# Note: on zsh you'll want to use emulate sh when importing as this depends on
-# the default word split behavior. I will fix zsh support at some point in the
-# future for now I doubt any zsh users but myself will care.
-#
 # Follow RFC 5424/syslog for log levels/behavior.
 #
 # Ref: https://datatracker.ietf.org/doc/html/rfc5424
@@ -47,7 +43,7 @@
 #    7       Debug              : debug-level messages
 
 # LVL     0     1     2    3     4    5      6    7
-SEVERITY="EMERG ALERT CRIT ERROR WARN NOTICE INFO DEBUG"
+SEVERITY="EMERG:ALERT:CRIT:ERROR:WARN:NOTICE:INFO:DEBUG"
 
 # Default log level is warn unless someone chooses a higher/lower level
 LOG_LEVEL=${LOG_LEVEL:-warn}
@@ -57,7 +53,7 @@ sevtolvl() {
   lvl=$1
   sev=$(echo "${lvl}" | tr '[:lower:]' '[:upper:]')
   idx=0
-  for s in $SEVERITY; do
+  for s in $(echo $SEVERITY | tr ':' ' '); do
     if [ "${sev}" = "${s}" ]; then
       break
     fi
@@ -100,67 +96,14 @@ log() {
 }
 
 # Helper functions for typing less log ... statements
-emerg() {
-  log emerg "$@"
+for lvl in emerg alert crit error warn notice info debug; do
+  eval "
+${lvl}() {
+  log ${lvl} \"\$@\"
 }
 
-alert() {
-  log alert "$@"
+_${lvl}() {
+  LOG_LEVEL=${lvl} log ${lvl} \"\$@\"
 }
-
-crit() {
-  log crit "$@"
-}
-
-error() {
-  log error "$@"
-}
-
-warn() {
-  log warn "$@"
-}
-
-notice() {
-  log notice "$@"
-}
-
-info() {
-  log info "$@"
-}
-
-debug() {
-  log debug "$@"
-}
-
-# And more internal "ignore LOG_LEVEL" versions.
-_emerg() {
-  LOG_LEVEL=emerg log emerg "$@"
-}
-
-_alert() {
-  LOG_LEVEL=alert log alert "$@"
-}
-
-_crit() {
-  LOG_LEVEL=crit log crit "$@"
-}
-
-_error() {
-  LOG_LEVEL=error log error "$@"
-}
-
-_warn() {
-  LOG_LEVEL=warn log warn "$@"
-}
-
-_notice() {
-  LOG_LEVEL=notice log notice "$@"
-}
-
-_info() {
-  LOG_LEVEL=info log info "$@"
-}
-
-_debug() {
-  LOG_LEVEL=debug log debug "$@"
-}
+"
+done
