@@ -64,7 +64,9 @@ fi
 # The "actual" script, note you could skip defining your own hook to save some
 # lines but this is a complete example.
 curl uri://isinvalid | jq -r .
-curl -s https://example.com/dne | jq -r .
+jq -r . << EOF
+this is not json
+EOF
 
 ls /does/not/exist
 rm /does/not/exist

@@ -41,11 +41,6 @@
 # we prefix the command name with sut, e.g. wrapcmd foo will result in a
 # trampoline function of sutfoo not foo. This is to enable shellspec
 # itself to be able to unit test the trampoline setup function below.
-#
-# Future enhancements will set this up to write stuff out to a timeline
-# directory of wrapped commands, return codes, stdin/out/err as files.
-#
-# That is a future me task.
 wrapcmd() {
   # Bit of a cheat to ensure if we're run under set -u we can detect things.
   # We only do this if DEBUG is set to... whatever doesn't matter the value.
@@ -87,10 +82,27 @@ wrapcmd() {
 
     # I had to do evil with the eval above...
     #shellcheck disable=SC2154
-    if [ "${posthook}" != "" ]; then
+    if [ -n "${posthook}" ]; then
       eval "${UPOST}=\$${UPOST}"
-    elif [ "${defposthook}" != "" ]; then
+    elif [ -n "${defposthook}" ]; then
       eval "${UPOST}=\${DEFAULTPOSTHOOK}"
+    fi
+
+    # Used by the tracing features to copy stdin/out/err to the trace directory.
+    # Not intended for users/script callers.
+    TPOST="${uppername}TRACEHOOK"
+
+    # This is a huge hack future me red/green/refactor it.
+    #shellcheck disable=SC2116 disable=SC2086
+    eval "tracehook=\$${TPOST}"
+    deftracehook="${DEFAULTTRACEHOOK}"
+
+    # I had to do evil with the eval above...
+    #shellcheck disable=SC2154
+    if [ -n "${tracehook}" ]; then
+      eval "${TPOST}=\$${TPOST}"
+    elif [ -n "${deftracehook}" ]; then
+      eval "${TPOST}=\${DEFAULTTRACEHOOK}"
     fi
 
     # TODO: pre/validate default hooks? Not sure that makes sense... Easy to add
@@ -164,6 +176,13 @@ ${cmd}posthook() {
   [ -n \"\$${UPOST}\" ] && \$${UPOST} \$@ || :;
 }"
 
+    # Trace hook eval's like the user hooks
+    eval "${TPOST}=\${${TPOST}-}"
+    eval "
+${cmd}tracehook() {
+  [ -n \"\$${TPOST}\" ] && \$${TPOST} \$@ || :;
+}"
+
     # I want to be clear, this entire things crazy enough as it is but this eval
     # is not for the faint of heart, here there definitely be dragons, hold onto
     # your butts.
@@ -211,6 +230,10 @@ ${cmdname}() {
   cat \$stderr >&2
 
   ${cmd}posthook \$rc \$stdin \$stdout \$stderr ${evalcmd} \"\$@\"
+
+  # Tracing hook comes after everything else, here to allow saving relevant data
+  # future work may have a pre trace hook too or not depends on use cases.
+  ${cmd}tracehook \$rc \$stdin \$stdout \$stderr ${evalcmd} \"\$@\"
   return \$rc
 }"
   done
@@ -272,3 +295,52 @@ stderr ${stderrpre-}$(_dump ${stderr})${reset-}
 ${yellow-}default cmdhook debug end${reset-}
 EOF
 }
+
+# Default tracing hook. (ab)uses the knowledge that TRACEPREFIX when tracing is
+# enabled is not null.
+defaulttracehook() {
+  if [ -n "${TRACEPREFIX}" ]; then
+    _defaulttracehook_rc="${1}"
+    shift
+    _defaulttracehook_stdin="${1}"
+    shift
+    _defaulttracehook_stdout="${1}"
+    shift
+    _defaulttracehook_stderr="${1}"
+    shift
+
+    # LC_ALL=C here so macos tr gets out of utf8 mode
+    _defaulttracehook_epoch="$(date +%s)-$(LC_ALL=C tr -dc A-Za-z0-9 < /dev/urandom | head -c 8)"
+    _defaulttracehook_cmds="${TRACEPREFIX}/cmd"
+    _defaulttracehook_date="${_defaulttracehook_cmds}/${_defaulttracehook_epoch}"
+    install -dm755 "${_defaulttracehook_date}"
+
+    # Preserve the filename of stdin-is-a-pipe to denote if that fd was a pipe
+    # or not.
+    for file in "${_defaulttracehook_stdin}" "${_defaulttracehook_stdout}" "${_defaulttracehook_stderr}"; do
+      # Not an issue for this, these files never have spaces in them.
+      #shellcheck disable=SC2046
+      filename=$(basename $(realpath "${file}") | head -c-10)
+      install -m444 "${file}" "${_defaulttracehook_date}/${filename}"
+    done
+
+    #shellcheck disable=SC2086
+    cat << EOF > "${_defaulttracehook_date}/info"
+wrapcmd tracing data
+
+command: $@
+rc: $_defaulttracehook_rc
+pwd: $(pwd)
+EOF
+
+    cat << EOF >> "${TRACEPREFIX}/timeline"
+wrapcmd(${_defaulttracehook_epoch}): $@ rc(${_defaulttracehook_rc})
+EOF
+  fi
+}
+
+# When not under test we can set the default hooks
+if [ -z "${SUT}" ]; then
+  DEFAULTPOSTHOOK="${DEFAULTPOSTHOOK:-defaultposthook}"
+  DEFAULTTRACEHOOK="${DEFAULTTRACEHOOK:-defaulttracehook}"
+fi
