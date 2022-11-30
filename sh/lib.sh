@@ -41,6 +41,7 @@ if [ -n "${SOURCEPREFIX}" ]; then
   . "${SOURCEPREFIX}/logger.sh"
   . "${SOURCEPREFIX}/cmd.sh"
   . "${SOURCEPREFIX}/yaml.sh"
+  . "${SOURCEPREFIX}/trace.sh"
 
   # Don't import lib.sh directly in shellspec tests, this is why.
   trap libcleanup EXIT
